@@ -9,6 +9,9 @@ from tqdm import tqdm
 
 
 def load_external_depth(image_name, depth_dir, conf_dir):
+    print(f"DEBUG: Loading external depth data for {image_name}")
+    print(f"DEBUG: Depth dir: {depth_dir}")
+    print(f"DEBUG: Conf dir: {conf_dir}")
     """Load external depth and confidence data.
     
     Args:
@@ -26,6 +29,7 @@ def load_external_depth(image_name, depth_dir, conf_dir):
     
     # Load depth - prioritize .npy format (float32, meters)
     if depth_npy_path.exists():
+        print(f"DEBUG: Loading depth .npy file: {depth_npy_path}")
         depth = np.load(str(depth_npy_path)).astype(np.float32)
         if depth is None or depth.size == 0:
             raise ValueError(f"Failed to load depth .npy: {depth_npy_path}")
@@ -38,15 +42,21 @@ def load_external_depth(image_name, depth_dir, conf_dir):
     else:
         raise FileNotFoundError(f"Depth file not found: {depth_npy_path} or {depth_png_path}")
     
+    # Ensure depth is 2D (squeeze if it has a channel dimension of 1)
+    if depth.ndim == 3 and depth.shape[2] == 1:
+        depth = depth.squeeze(axis=2)
+        print(f"DEBUG: Squeezed depth from 3D to 2D: {depth.shape}")
+    
     # Load confidence (uint8 PNG [0-255])
     conf_path = Path(conf_dir) / f"{image_stem}.png"
     conf_npy_path = Path(conf_dir) / f"{image_stem}.npy"
     
-    if conf_npy_path.exists():
-        # Load .npy confidence (assume already [0,1])
-        confidence = np.load(str(conf_npy_path)).astype(np.float32)
-    elif conf_path.exists():
+    # if conf_npy_path.exists():
+    #     # Load .npy confidence (assume already [0,1])
+    #     confidence = np.load(str(conf_npy_path)).astype(np.float32)
+    if conf_path.exists():
         # Load PNG confidence
+        print(f"DEBUG: Loading confidence PNG file: {conf_path}")
         conf_uint8 = cv2.imread(str(conf_path), cv2.IMREAD_GRAYSCALE)
         if conf_uint8 is None:
             raise ValueError(f"Failed to load confidence image: {conf_path}")
@@ -54,24 +64,23 @@ def load_external_depth(image_name, depth_dir, conf_dir):
     else:
         raise FileNotFoundError(f"Confidence file not found: {conf_path} or {conf_npy_path}")
     
-    # Load confidence (uint8 [0-255] -> float32 [0-1])
-    conf_uint8 = cv2.imread(str(conf_path), cv2.IMREAD_GRAYSCALE)
-    if conf_uint8 is None:
-        raise ValueError(f"Failed to load confidence image: {conf_path}")
-    confidence = conf_uint8.astype(np.float32) / 255.0
+    # Resize confidence to match depth dimensions if needed
+    if confidence.shape != depth.shape[:2]:
+        print(f"DEBUG: Resizing confidence from {confidence.shape} to {depth.shape[:2]}")
+        confidence = cv2.resize(confidence, (depth.shape[1], depth.shape[0]), interpolation=cv2.INTER_LINEAR)
     
     # Calculate variance: error = depth * (1 - confidence)
     error = depth * (1 - confidence)
     depth_variance = error ** 2
     
-    # Valid mask: non-zero depth
-    valid = depth > 0
+    # Valid mask: non-zero depth and less than 200 meters
+    valid = (depth > 0) & (depth < 200)
     
     return {
         'depth': depth,
         'depth_variance': depth_variance,
         'depth_confidence': confidence,
-        'valid': valid.astype(np.float32)
+        'valid': valid  # Keep as bool, consistent with original flow
     }
 
 
@@ -150,14 +159,18 @@ def convert_to_h5(image_list, external_dirs, output_h5_path, verbose=0):
         try:
             # Load depth data
             if depth_dir is not None and conf_dir is not None:
+                print(f"########## Loading external depth data for {image_name}")
                 depth_data = load_external_depth(image_name, depth_dir, conf_dir)
             else:
+                print(f"########## No external depth data for {image_name}")
                 depth_data = {}
             
             # Load normal data
             if normal_dir is not None:
+                print(f"########## Loading external normal data for {image_name}")
                 normal_data = load_external_normal(image_name, normal_dir)
             else:
+                print(f"########## No external normal data for {image_name}")
                 normal_data = {}
             
             # Combine all data

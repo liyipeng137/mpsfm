@@ -50,6 +50,9 @@ class InitUtils:
             self.cameras[cam_id].sx = resolution
             self.cameras[cam_id].sy = resolution
 
+        print(f"DEBUG: initialize_mono_maps Depth dir: {extraction_obj.depth_dir}")
+        print(f"DEBUG: initialize_mono_maps Normals dir: {extraction_obj.normals_dir}")
+        print(f"DEBUG: initialize_mono_maps Masks dir: {extraction_obj.masks_dirs}")
         for imid in tqdm(self.images):
             cam_id = self.images[imid].camera_id
             self.images[imid].init_depth(

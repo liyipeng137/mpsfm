@@ -115,15 +115,15 @@ class Metric3Dv2(BaseModel):
         if any(s.endswith("2") for s in self.conf.return_types):
             out_kwargs["normals2_variance"] = kappa_to_alpha(out_kwargs["normals2_confidence"]) ** 2
         
-        # DEBUG: 打印过滤前的键
-        print(f"[DEBUG metric3dv2] Before filter - out_kwargs keys: {list(out_kwargs.keys())}")
-        print(f"[DEBUG metric3dv2] return_types: {self.conf.return_types}")
+        # # DEBUG: 打印过滤前的键
+        # print(f"[DEBUG metric3dv2] Before filter - out_kwargs keys: {list(out_kwargs.keys())}")
+        # print(f"[DEBUG metric3dv2] return_types: {self.conf.return_types}")
         
         out_kwargs = {k: v.squeeze() for k, v in out_kwargs.items() if k in self.conf.return_types}
         
-        # DEBUG: 打印过滤后的键
-        print(f"[DEBUG metric3dv2] After filter - out_kwargs keys: {list(out_kwargs.keys())}")
-        print(f"[DEBUG metric3dv2] depth_confidence in output: {'depth_confidence' in out_kwargs}")
+        # # DEBUG: 打印过滤后的键
+        # print(f"[DEBUG metric3dv2] After filter - out_kwargs keys: {list(out_kwargs.keys())}")
+        # print(f"[DEBUG metric3dv2] depth_confidence in output: {'depth_confidence' in out_kwargs}")
         
         return out_kwargs
 

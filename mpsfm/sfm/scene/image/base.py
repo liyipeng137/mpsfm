@@ -119,6 +119,7 @@ class Image(ColmapImageWrapper, BaseClass, Integration):
         if "mast3r" in self.depth_dir.name:
             depth_dict = get_mono_map_from_pairs(self.depth_dir, self.imname, pairs_pth)
         else:
+            print(f"DEBUG: load_depth_data depth_dir: {self.depth_dir}, imname: {self.imname}")
             depth_dict = get_mono_map(self.depth_dir, self.imname)
         return depth_dict
 

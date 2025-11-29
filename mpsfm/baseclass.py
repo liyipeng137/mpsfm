@@ -23,6 +23,14 @@ class BaseClass:
         if isinstance(conf, dict):
             conf = OmegaConf.create(conf)
         self.conf = OmegaConf.merge(self.default_conf, conf)
+        
+        # Debug: Print full configuration
+        print(f"\n{'='*80}")
+        print(f"[{self.__class__.__name__}] Full Configuration:")
+        print(f"{'='*80}")
+        print(OmegaConf.to_yaml(self.conf))
+        print(f"{'='*80}\n")
+        
         self._assert_configs()
         self._propagate_conf()
         self._init(*args, **kwargs)

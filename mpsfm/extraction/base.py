@@ -188,7 +188,7 @@ class Extraction(BaseClass):
         """Extract monocular depth."""
         # Check if using external depth data
         if self.external_depth_dir is not None and self.external_depth_conf_dir is not None:
-            print("Loading external depth data...")
+            print("DEBUG: Loading external depth data...")
             from .imagewise.geometry.external_loader import convert_to_h5
             
             output_h5 = self.cache_dir / "external_depth.h5"
