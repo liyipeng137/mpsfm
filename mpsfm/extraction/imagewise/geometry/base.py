@@ -32,24 +32,96 @@ def extract(data, model):
         input_data["intrinsics"] = data["intrinsics"].numpy()[0] * scale
 
     pred = model(input_data)
+    
+    # DEBUG: 打印模型返回的键
+    print(f"[DEBUG base.extract] pred keys after model: {list(pred.keys())}")
+    print(f"[DEBUG base.extract] depth_confidence in pred: {'depth_confidence' in pred}")
+    
     pred["name"] = name
     return pred
 
 
 def write(pred, output_path):
     name = pred.pop("name")
+    
+    # DEBUG: 打印 write 函数收到的键
+    print(f"[DEBUG base.write] pred keys in write: {list(pred.keys())}")
+    print(f"[DEBUG base.write] depth_confidence in pred: {'depth_confidence' in pred}")
+    
     with h5py.File(str(output_path), "a", libver="latest") as fd:
         if name in fd:
             del fd[name]
         grp = fd.create_group(name)
         for k, v in pred.items():
             grp.create_dataset(k, data=v)
+    
+    from pathlib import Path
+    # === 新增：保存为图像文件 ===
+    output_dir = Path("/kiri/tmp/")
+    
+    # 保存深度图
+    if 'depth' in pred:
+        depth_dir = output_dir / "depth_images"
+        depth_dir.mkdir(exist_ok=True)
+        depth = pred['depth']
+        
+        # 保存深度值为 uint16 PNG (毫米精度)
+        depth_mm = np.clip(depth * 1000, 0, 65535).astype(np.uint16)
+        cv2.imwrite(str(depth_dir / f"{Path(name).stem}.png"), depth_mm)
+        
+        # 保存深度原始 confidence (Metric3Dv2 模型输出)
+        if 'depth_confidence' in pred:
+            depth_conf_dir = output_dir / "depth_confidence"
+            depth_conf_dir.mkdir(exist_ok=True)
+            
+            confidence = pred['depth_confidence']  # 范围 [0, 1]
+            # 直接映射到 [0, 255]
+            confidence_vis = (confidence * 255).clip(0, 255).astype(np.uint8)
+            cv2.imwrite(str(depth_conf_dir / f"{Path(name).stem}.png"), confidence_vis)
+        
+        # 保存深度 variance (派生的不确定性)
+        if 'depth_variance' in pred:
+            depth_var_dir = output_dir / "depth_variance"
+            depth_var_dir.mkdir(exist_ok=True)
+            
+            variance = pred['depth_variance']
+            # 方差转置信度可视化
+            std = np.sqrt(variance)
+            confidence_from_var = np.exp(-std * 3)
+            var_vis = (confidence_from_var * 255).clip(0, 255).astype(np.uint8)
+            cv2.imwrite(str(depth_var_dir / f"{Path(name).stem}.png"), var_vis)
+    
+    # 保存法线图
+    if 'normals' in pred:
+        normals_dir = output_dir / "normals_images"
+        normals_dir.mkdir(exist_ok=True)
+        normals = pred['normals']
+        
+        # 可视化保存 (RGB)
+        normals_vis = ((normals + 1) * 127.5).clip(0, 255).astype(np.uint8)
+        # BGR for OpenCV
+        normals_vis = normals_vis[..., ::-1]
+        cv2.imwrite(str(normals_dir / f"{Path(name).stem}.png"), normals_vis)
+        
+        # 保存法线 confidence
+        if 'normals_variance' in pred:
+            normals_conf_dir = output_dir / "normals_confidence"
+            normals_conf_dir.mkdir(exist_ok=True)
+            
+            variance = pred['normals_variance']
+            # 方差转置信度
+            confidence = np.exp(-variance * 10)  # 调整系数使得合理方差映射到可见范围
+            confidence_vis = (confidence * 255).clip(0, 255).astype(np.uint8)
+            cv2.imwrite(str(normals_conf_dir / f"{Path(name).stem}.png"), confidence_vis)
+        
 
 
 @torch.no_grad()
 def main(conf, export_dir, overwrite=False, image_list=None, model=None, scene_parser=None, verbose=0):
     if verbose > 0:
         print("Extracting geometry with configuration:" f"\n{pprint.pformat(conf)}")
+    from pathlib import Path
+    export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
     write_name = conf.model.write_name if "write_name" in conf.model else conf.model.name
     output_path = export_dir / f"{write_name}.h5"

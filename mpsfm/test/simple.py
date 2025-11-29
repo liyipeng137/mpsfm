@@ -21,6 +21,10 @@ class SimpleTest(BaseClass):
         refrec_dir=None,
         cache_dir=None,
         images_dir=None,
+        external_depth_dir=None,
+        external_normal_dir=None,
+        external_depth_conf_dir=None,
+        skip_masks=False,
     ):
         data_dir = Path(data_dir)
 
@@ -43,5 +47,9 @@ class SimpleTest(BaseClass):
             cache_dir=cache_dir,
             ref_imids=list(scene_parser.rec.images.keys()),
             scene_parser=scene_parser,
+            external_depth_dir=external_depth_dir,
+            external_normal_dir=external_normal_dir,
+            external_depth_conf_dir=external_depth_conf_dir,
+            skip_masks=skip_masks,
         )
         return self.reconstruction_manager(**init_info)

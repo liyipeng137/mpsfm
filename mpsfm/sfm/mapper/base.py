@@ -121,6 +121,10 @@ class MpsfmMapper(BaseClass):
         models=None,
         extract_only=False,
         scene_parser=None,
+        external_depth_dir=None,
+        external_normal_dir=None,
+        external_depth_conf_dir=None,
+        skip_masks=False,
         **kwargs,
     ):
         self.cache_dir = cache_dir
@@ -136,6 +140,10 @@ class MpsfmMapper(BaseClass):
             sfm_outputs_dir=self.sfm_outputs_dir,
             references=references,
             extract=self.conf.extract,
+            external_depth_dir=external_depth_dir,
+            external_normal_dir=external_normal_dir,
+            external_depth_conf_dir=external_depth_conf_dir,
+            skip_masks=skip_masks,
         )
 
         if self.conf.pairs_type == "retrieval":
@@ -148,7 +156,7 @@ class MpsfmMapper(BaseClass):
         else:
             self.extractor.extract_mono()
 
-        if len(self.conf.masks) > 0:
+        if len(self.conf.masks) > 0 and not skip_masks:
             self.extractor.extract_masks(self.conf.masks)
 
         if extract_only:

@@ -61,6 +61,10 @@ class Extraction(BaseClass):
         scene_parser=None,
         references=None,
         extract=None,
+        external_depth_dir=None,
+        external_normal_dir=None,
+        external_depth_conf_dir=None,
+        skip_masks=False,
     ):
         if isinstance(conf, dict):
             conf = OmegaConf.create(conf)
@@ -87,6 +91,12 @@ class Extraction(BaseClass):
         if extract is None:
             extract = set()
         self.extract = extract
+        
+        # External data paths
+        self.external_depth_dir = external_depth_dir
+        self.external_normal_dir = external_normal_dir
+        self.external_depth_conf_dir = external_depth_conf_dir
+        self.skip_masks = skip_masks
 
     def extract_sparse(self, overwrite=False):
         """Extract sparse features."""
@@ -176,6 +186,28 @@ class Extraction(BaseClass):
 
     def extract_depth(self, overwrite=False):
         """Extract monocular depth."""
+        # Check if using external depth data
+        if self.external_depth_dir is not None and self.external_depth_conf_dir is not None:
+            print("Loading external depth data...")
+            from .imagewise.geometry.external_loader import convert_to_h5
+            
+            output_h5 = self.cache_dir / "external_depth.h5"
+            external_dirs = {
+                'depth': self.external_depth_dir,
+                'depth_conf': self.external_depth_conf_dir,
+                'normal': None  # Will be handled separately
+            }
+            convert_to_h5(
+                self.images_list,
+                external_dirs,
+                output_h5,
+                verbose=self.conf.verbose
+            )
+            self.depth_dir = output_h5
+            self.log(f"External depth located in {self.depth_dir}", level=1)
+            return None  # No model config needed
+        
+        # Original model-based extraction
         print(f"Extracting {self.conf.depth} depth...")
         if any(s in self.extract for s in ["d", "depth"]):
             overwrite = True
@@ -197,6 +229,28 @@ class Extraction(BaseClass):
 
     def extract_normals(self, overwrite=False):
         """Extract monocular normals."""
+        # Check if using external normal data
+        if self.external_normal_dir is not None:
+            print("Loading external normal data...")
+            from .imagewise.geometry.external_loader import convert_to_h5
+            
+            output_h5 = self.cache_dir / "external_normals.h5"
+            external_dirs = {
+                'depth': None,
+                'normal': self.external_normal_dir,
+                'depth_conf': None
+            }
+            convert_to_h5(
+                self.images_list,
+                external_dirs,
+                output_h5,
+                verbose=self.conf.verbose
+            )
+            self.normals_dir = output_h5
+            self.log(f"External normals located in {self.normals_dir}", level=1)
+            return None  # No model config needed
+        
+        # Original model-based extraction
         if any(s in self.extract for s in ["n", "normals"]):
             overwrite = True
         print(f"Extracting {self.conf.normals} normals...")
@@ -289,6 +343,11 @@ class Extraction(BaseClass):
 
     def extract_masks(self, masks, overwrite=False):
         """Extract masks."""
+        if self.skip_masks:
+            print("Skipping mask extraction (skip_masks=True)")
+            self.masks_dirs = []
+            return
+        
         print(f"Extracting {masks} masks...")
         self.masks_dirs = []
         for mask in masks:

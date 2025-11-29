@@ -28,7 +28,7 @@ def slice_and_interpolate(tensor, pad_info, ori_shape, mode="bilinear"):
 
 class Metric3Dv2(BaseModel):
     default_conf = {
-        "return_types": ["depth", "depth_variance", "normals", "normals_variance", "valid"],
+        "return_types": ["depth", "depth_variance", "depth_confidence", "normals", "normals_variance", "valid"],
         "model_name": "metric_depth_vit_giant2_800k.pth",
         "download_url": "https://huggingface.co/JUGGHM/Metric3D/resolve/main/metric_depth_vit_giant2_800k.pth",
         "config_name": "vit.raft5.giant2.py",
@@ -69,7 +69,7 @@ class Metric3Dv2(BaseModel):
             input=rgb_input,
             cam_model=None,  # default method inputs cam model but doesn not use it
         )
-        pred_depth, normals, error, normal_confidence, valid = self.step(
+        pred_depth, normals, error, normal_confidence, valid, depth_confidence = self.step(
             data, pad_info, ori_shape, normalize_scale, label_scale_factor
         )
         normals = self.output_coords(normals.permute(1, 2, 0))
@@ -77,6 +77,7 @@ class Metric3Dv2(BaseModel):
         outdict = dict(
             depth=pred_depth,
             depth_variance=depth_variance,
+            depth_confidence=depth_confidence,
             normals=normals,
             normals_confidence=normal_confidence,
             valid=valid,
@@ -86,12 +87,12 @@ class Metric3Dv2(BaseModel):
                 input=torch.flip(rgb_input, dims=[3]),
                 cam_model=None,  # default method inputs cam model but doesn not use it
             )
-            pred_depth_flipped, normals2, error_flipped, normal_confidence_flipped, valid_flipped = self.step(
+            pred_depth_flipped, normals2, error_flipped, normal_confidence_flipped, valid_flipped, depth_confidence_flipped = self.step(
                 flipped_data, pad_info, ori_shape, normalize_scale, label_scale_factor
             )
-            pred_depth_flipped, normals2, error_flipped, normal_confidence_flipped, valid_flipped = [
+            pred_depth_flipped, normals2, error_flipped, normal_confidence_flipped, valid_flipped, depth_confidence_flipped = [
                 torch.flip(tensor, dims=[2])
-                for tensor in [pred_depth_flipped, normals2, error_flipped, normal_confidence_flipped, valid_flipped]
+                for tensor in [pred_depth_flipped, normals2, error_flipped, normal_confidence_flipped, valid_flipped, depth_confidence_flipped]
             ]
 
             normals2 = self.output_coords(normals2.permute(1, 2, 0))
@@ -101,6 +102,7 @@ class Metric3Dv2(BaseModel):
                 dict(
                     depth2=pred_depth_flipped,
                     depth_variance2=depth_variance_flipped,
+                    depth_confidence2=depth_confidence_flipped,
                     normals2=normals2,
                     normals2_confidence=normal_confidence_flipped,
                     valid2=valid_flipped,
@@ -112,7 +114,17 @@ class Metric3Dv2(BaseModel):
         out_kwargs["normals_variance"] = kappa_to_alpha(out_kwargs["normals_confidence"]) ** 2
         if any(s.endswith("2") for s in self.conf.return_types):
             out_kwargs["normals2_variance"] = kappa_to_alpha(out_kwargs["normals2_confidence"]) ** 2
+        
+        # DEBUG: 打印过滤前的键
+        print(f"[DEBUG metric3dv2] Before filter - out_kwargs keys: {list(out_kwargs.keys())}")
+        print(f"[DEBUG metric3dv2] return_types: {self.conf.return_types}")
+        
         out_kwargs = {k: v.squeeze() for k, v in out_kwargs.items() if k in self.conf.return_types}
+        
+        # DEBUG: 打印过滤后的键
+        print(f"[DEBUG metric3dv2] After filter - out_kwargs keys: {list(out_kwargs.keys())}")
+        print(f"[DEBUG metric3dv2] depth_confidence in output: {'depth_confidence' in out_kwargs}")
+        
         return out_kwargs
 
     def step(self, data, pad_info, ori_shape, normalize_scale, label_scale_factor):
@@ -133,7 +145,7 @@ class Metric3Dv2(BaseModel):
         pred_depth = pred_depth * normalize_scale / label_scale_factor
         confidence = torch.clamp(confidence, 0, 1)
         error = pred_depth * (1 - confidence)
-        return pred_depth, pred_normal, error, normal_confidence, valid == 1
+        return pred_depth, pred_normal, error, normal_confidence, valid == 1, confidence
 
     @staticmethod
     def omni_to_bni(normals):
