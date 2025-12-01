@@ -16,9 +16,17 @@ def extract(data, model):
     assert len(name) == 1
     name = name[0]
 
+    print(f"[DEBUG base.extract] Processing image: {name}")
+    print(f"[DEBUG base.extract] Original data['image'] shape: {data['image'].shape}")
+    
     scale = model.conf.scale if hasattr(model.conf, "scale") else 1
+    print(f"[DEBUG base.extract] scale: {scale}")
+    
     image = (data["image"].numpy()[0].transpose(1, 2, 0) * 255).astype(np.uint8)
+    print(f"[DEBUG base.extract] After numpy+transpose, image shape: {image.shape}")
+    
     if scale != 1:
+        print(f"DEBUG: Resizing image from {image.shape} to {model.conf.scale}")
         image = cv2.resize(
             image,
             None,
@@ -26,6 +34,8 @@ def extract(data, model):
             fy=model.conf.scale,
             interpolation=cv2.INTER_AREA,
         )
+        print(f"[DEBUG base.extract] After resize, image shape: {image.shape}")
+    
     input_data["image"] = image
     input_data["meta"] = data["meta"]
     if "intrinsics" in data:
@@ -33,9 +43,12 @@ def extract(data, model):
 
     pred = model(input_data)
     
-    # DEBUG: 打印模型返回的键
+    # DEBUG: 打印模型返回的键和形状
     print(f"[DEBUG base.extract] pred keys after model: {list(pred.keys())}")
-    print(f"[DEBUG base.extract] depth_confidence in pred: {'depth_confidence' in pred}")
+    if 'depth' in pred:
+        print(f"[DEBUG base.extract] pred['depth'] shape: {pred['depth'].shape}")
+    if 'depth_confidence' in pred:
+        print(f"[DEBUG base.extract] pred['depth_confidence'] shape: {pred['depth_confidence'].shape}")
     
     pred["name"] = name
     return pred
@@ -44,9 +57,13 @@ def extract(data, model):
 def write(pred, output_path):
     name = pred.pop("name")
     
-    # DEBUG: 打印 write 函数收到的键
-    print(f"[DEBUG base.write] pred keys in write: {list(pred.keys())}")
-    print(f"[DEBUG base.write] depth_confidence in pred: {'depth_confidence' in pred}")
+    # DEBUG: 打印 write 函数收到的数据
+    print(f"[DEBUG base.write] Writing data for: {name}")
+    print(f"[DEBUG base.write] pred keys: {list(pred.keys())}")
+    if 'depth' in pred:
+        print(f"[DEBUG base.write] depth shape: {pred['depth'].shape}")
+    if 'depth_confidence' in pred:
+        print(f"[DEBUG base.write] depth_confidence shape: {pred['depth_confidence'].shape}")
     
     with h5py.File(str(output_path), "a", libver="latest") as fd:
         if name in fd:

@@ -54,6 +54,7 @@ class BaseDataset:
         "batch_size": 1,
         "num_workers": 0,
         "depth_details": {"error_to_conf_lambda": None},
+        # "resize_max": None,
         "resize_max": 1200,
         "interpolation": "pil_lanczos",
     }

@@ -57,11 +57,17 @@ class Metric3Dv2(BaseModel):
         image = data["image"]
         intrinsics = data["intrinsics"]
 
+        print(f"[DEBUG metric3dv2] Input image shape: {image.shape}")
         ori_shape = [image.shape[0], image.shape[1]]
+        print(f"[DEBUG metric3dv2] ori_shape: {ori_shape}")
 
         rgb_input, _, pad_info, label_scale_factor = transform_test_data_scalecano(
             image, intrinsics, self.metric3d_cfg.data_basic
         )
+        print(f"[DEBUG metric3dv2] After transform - rgb_input shape: {rgb_input.shape}")
+        print(f"[DEBUG metric3dv2] pad_info: {pad_info}")
+        print(f"[DEBUG metric3dv2] label_scale_factor: {label_scale_factor}")
+        
         rgb_input = rgb_input[None]
         normalize_scale = self.metric3d_cfg.data_basic.depth_range[1]
 
@@ -72,6 +78,10 @@ class Metric3Dv2(BaseModel):
         pred_depth, normals, error, normal_confidence, valid, depth_confidence = self.step(
             data, pad_info, ori_shape, normalize_scale, label_scale_factor
         )
+        
+        print(f"[DEBUG metric3dv2] After step - pred_depth shape: {pred_depth.shape}")
+        print(f"[DEBUG metric3dv2] After step - normals shape: {normals.shape}")
+        
         normals = self.output_coords(normals.permute(1, 2, 0))
         depth_variance = error**2
         outdict = dict(
