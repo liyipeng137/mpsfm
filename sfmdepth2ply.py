@@ -43,7 +43,7 @@ CAMERA_MODELS = {
 }
 CAMERA_MODEL_IDS = dict([(camera_model.model_id, camera_model)
                          for camera_model in CAMERA_MODELS])
-class Image(BaseImage):
+class ImageCC(BaseImage):
     pass
     # def qvec2rotmat(self):
     #     return qvec2rotmat(self.qvec)
@@ -127,7 +127,7 @@ def read_extrinsics_binary(path_to_model_file):
             xys = np.column_stack([tuple(map(float, x_y_id_s[0::3])),
                                    tuple(map(float, x_y_id_s[1::3]))])
             point3D_ids = np.array(tuple(map(int, x_y_id_s[2::3])))
-            images[image_id] = Image(
+            images[image_id] = ImageCC(
                 id=image_id, qvec=qvec, tvec=tvec,
                 camera_id=camera_id, name=image_name,
                 xys=xys, point3D_ids=point3D_ids)
@@ -212,30 +212,38 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, depth_acc=1
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
         principal_point_ndc = np.array([cx / width, cy / height])
+        print(f"##########os.path.basename(extr.name): {os.path.basename(extr.name)}")
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
+        print(f"##########image_path: {image_path}")
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
+        image_np = np.array(image)
+        img_h, img_w = image_np.shape[:2]
 
         base_path = os.path.dirname(images_folder)
 
-        # # depth anything
-        # depth_path = os.path.join(base_path, "mono_depths", f"{image_name}.png")
-        # depth = Image.open(depth_path)
-        # depth = np.array(depth) / 1000.0
-
-        # load lidar depth
-        # lidar_depth_path = os.path.join(base_path, "mono_depths_aligned", f"{image_name}.png")
-        lidar_depth_path = os.path.join(base_path, "mono_depths_aligned", f"{image_name}.png")
-        lidar_depth = Image.open(lidar_depth_path)
-        print(f"depth_acc: {depth_acc}")
-        lidar_depth = np.array(lidar_depth) / depth_acc
-
-
+        lidar_depth_path_npy = os.path.join(base_path, "depths", f"{image_name}.npy")
+        if os.path.exists(lidar_depth_path_npy):
+            lidar_depth = np.load(lidar_depth_path_npy).astype(np.float32)
+            if lidar_depth.shape[0] != img_h or lidar_depth.shape[1] != img_w:
+                # resize depth to match image resolution
+                lidar_depth = cv2.resize(lidar_depth, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+        else:
+            raise FileNotFoundError(f"Lidar depth file not found: {lidar_depth_path_npy}")
 
         # load confidence
         confidence_path = os.path.join(base_path, "confidence", f"{image_name}.png")
-        confidence = (cv2.imread(confidence_path) / 255)[..., 0]
+        if os.path.exists(confidence_path):
+            conf_read = cv2.imread(confidence_path, cv2.IMREAD_UNCHANGED)
+            if conf_read is not None:
+                confidence = conf_read[..., 0].astype(np.float32) / 255.0
+                if confidence.shape[0] != img_h or confidence.shape[1] != img_w:
+                    confidence = cv2.resize(confidence, (img_w, img_h), interpolation=cv2.INTER_NEAREST)
+            else:
+                confidence = None
+        else:
+            confidence = None
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height,
@@ -264,7 +272,7 @@ def generate_ply_from_rgbd(train_cam_infos, meta, num_points, ply_path, cam_intr
     samples_per_frame = (num_points + len(train_cam_infos)) // len(train_cam_infos)
 
     volume = o3d.pipelines.integration.ScalableTSDFVolume(
-        voxel_length=0.04,
+        voxel_length=0.1,
         sdf_trunc=0.2,
         color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
     )
@@ -319,31 +327,34 @@ def generate_ply_from_rgbd(train_cam_infos, meta, num_points, ply_path, cam_intr
             camera_intrinsics,  # type: ignore
             np.linalg.inv(c2w),
         )
+    
+    # 直接提取 mesh
+    mesh = volume.extract_triangle_mesh()
+    o3d.io.write_triangle_mesh(ply_path, mesh)
+    #     pcd = volume.extract_point_cloud()
 
-        pcd = volume.extract_point_cloud()
+    #     samples_per_frame = min(samples_per_frame, len(pcd.points))
+    #     mask = random.sample(range(len(pcd.points)), samples_per_frame)
+    #     mask = np.asarray(mask)
+    #     color = np.asarray(pcd.colors)[mask]
+    #     point = np.asarray(pcd.points)[mask]
 
-        samples_per_frame = min(samples_per_frame, len(pcd.points))
-        mask = random.sample(range(len(pcd.points)), samples_per_frame)
-        mask = np.asarray(mask)
-        color = np.asarray(pcd.colors)[mask]
-        point = np.asarray(pcd.points)[mask]
+    #     points_list.append(np.asarray(point))
+    #     colors_list.append(np.asarray(color))
 
-        points_list.append(np.asarray(point))
-        colors_list.append(np.asarray(color))
+    # points = np.concatenate(points_list, axis=0)
+    # colors = np.concatenate(colors_list, axis=0)
 
-    points = np.concatenate(points_list, axis=0)
-    colors = np.concatenate(colors_list, axis=0)
+    # pcd = o3d.geometry.PointCloud()
+    # pcd.points = o3d.utility.Vector3dVector(points)
+    # pcd.colors = o3d.utility.Vector3dVector(colors)
 
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points)
-    pcd.colors = o3d.utility.Vector3dVector(colors)
-
-    o3d.io.write_point_cloud(ply_path, pcd)
+    # o3d.io.write_point_cloud(ply_path, pcd)
 
 
 
 
-data_folder = ""
+data_folder = "sfm_outputs"
 cameras_extrinsic_file = os.path.join(data_folder, "sparse/0", "images.bin")
 cameras_intrinsic_file = os.path.join(data_folder, "sparse/0", "cameras.bin")
 cam_extrinsics = read_extrinsics_binary(cameras_extrinsic_file)
@@ -351,7 +362,7 @@ cam_intrinsics = read_intrinsics_binary(cameras_intrinsic_file)
 
 
 print(f"cam_intrinsics: {cam_intrinsics}")
-reading_dir = "images"
+reading_dir = "image"
 cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(data_folder, reading_dir), 
                                            depth_acc=1000)
 cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
@@ -361,5 +372,5 @@ train_cam_infos = cam_infos
 
 
 num_pts = 1000_000
-ply_path = os.path.join(data_folder, "pointcloud.ply")
+ply_path = os.path.join(data_folder, "tsdf_result.ply")
 generate_ply_from_rgbd(train_cam_infos, meta=None, num_points=num_pts, ply_path=ply_path, cam_intrinsics=cam_intrinsics)

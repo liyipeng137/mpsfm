@@ -86,6 +86,9 @@ def write(pred, output_path):
         depth_mm = np.clip(depth * 1000, 0, 65535).astype(np.uint16)
         cv2.imwrite(str(depth_dir / f"{Path(name).stem}.png"), depth_mm)
         
+        # 保存原始 float32 深度为 npy (米制，完整精度)
+        np.save(str(depth_dir / f"{Path(name).stem}.npy"), depth)
+        
         # 保存深度原始 confidence (Metric3Dv2 模型输出)
         if 'depth_confidence' in pred:
             depth_conf_dir = output_dir / "depth_confidence"
